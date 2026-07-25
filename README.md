@@ -5,7 +5,7 @@
 Signal acquired. One ship, one pilot, a crew waiting to be recruited. The rest
 is out there in the dark.
 
-**[pubdeer.com](https://pubdeer.com)** · watch the trailer and see it in action.
+**[pubdeer.com](https://pubdeer.com)** · see it in action, or [watch the trailer on YouTube](https://www.youtube.com/shorts/G5ii5txIdFI).
 Coming soon to F-Droid and Accrescent.
 
 ## Why Astro Loop
