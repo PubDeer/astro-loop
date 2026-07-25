@@ -1,0 +1,1 @@
+Open-source roguelike shooter. Simple to play, no ads, no tracking, offline.

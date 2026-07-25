@@ -1,0 +1,18 @@
+A roguelike shooter caught in a loop you were never meant to escape.
+
+Signal acquired. One ship, one pilot, and a crew waiting to be recruited. Fly out into the dark, survive endless waves of asteroids and enemies, and see how far you get before the difficulty catches up with you.
+
+Every run you pick fresh weapons and upgrades. Recruit a crew of pilots, each with their own ship and starting weapon, and spend your salvage in the black market between runs. And somewhere in all of it, a story hides in plain sight.
+
+Simple to play. Steer with a single finger, and your guns fire on their own. Easy to pick up, hard to put down.
+
+Built with respect for you and your phone:
+
+* Open source. No black boxes. The whole game is open under GPLv3.
+* Free forever. No price, no in-app purchases, no pay-to-win.
+* No ads, no tracking. Zero internet permission. It collects nothing, so not one byte ever leaves your phone.
+* No sensitive permissions. No camera, mic, location, contacts, files or network.
+* Plays offline. Works with no signal at all.
+* No accounts. No sign-up, no login, no email. Open it and play.
+
+No game engine: everything is drawn as vectors on a Canvas in pure Kotlin.
