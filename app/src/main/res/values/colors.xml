@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="background">#FF000011</color>
+    <color name="ship_green">#FF00FF00</color>
+    <color name="projectile_yellow">#FFFFFF00</color>
+    <color name="powerup_cyan">#FF00FFFF</color>
+</resources>
