@@ -5,25 +5,26 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Scout hull — stroked outline, nose pointing up -->
-    <!-- Points: front(54,26) left-wing(40,73.6) rear-middle(54,65.2) right-wing(68,73.6) -->
+    <!-- Scout hull — bold blue wireframe, nose up.
+         Points: nose(54,21.6) left-wing(33.8,84.4) tail-notch(54,71) right-wing(74.2,84.4) -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#3388FF"
-        android:strokeWidth="2"
-        android:pathData="M54,26 L40,73.6 L54,65.2 L68,73.6 Z"/>
+        android:strokeColor="#4488FF"
+        android:strokeWidth="4.5"
+        android:strokeLineJoin="round"
+        android:pathData="M54,21.6 L33.8,84.4 L54,71 L74.2,84.4 Z"/>
 
-    <!-- Pilot dot — Astro red #DD3333, filled, center(54,45.6) radius 3 -->
+    <!-- Canopy — solid blue glass so the pilot dot reads -->
+    <path
+        android:fillColor="#3F7FFF"
+        android:strokeColor="#8FB8FF"
+        android:strokeWidth="0.8"
+        android:strokeLineJoin="round"
+        android:pathData="M54,37 L47.6,55 L60.4,55 Z"/>
+
+    <!-- Pilot dot — Astro red, centre(54,48.4) radius 3.2 -->
     <path
         android:fillColor="#DD3333"
-        android:pathData="M54,45.6 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0"/>
-
-    <!-- Cockpit outline — same blue as hull, stroked -->
-    <!-- Points: tip(54,40) left-base(50.6,49.8) right-base(57.4,49.8) -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#3388FF"
-        android:strokeWidth="2"
-        android:pathData="M54,40 L50.6,49.8 L57.4,49.8 Z"/>
+        android:pathData="M54,48.4 m-3.2,0 a3.2,3.2 0 1,0 6.4,0 a3.2,3.2 0 1,0 -6.4,0 Z"/>
 
 </vector>

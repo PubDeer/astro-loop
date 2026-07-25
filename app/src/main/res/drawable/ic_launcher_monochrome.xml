@@ -5,28 +5,31 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Same nose-up Scout as ic_launcher_foreground, single color for themed icons.
-         Only alpha matters here — the launcher tints the glyph. Strokes are slightly
-         heavier than the foreground (3/2.5 vs 2) so the tinted outline survives
-         small render sizes. -->
+    <!-- Single-colour themed glyph. Only alpha matters — the launcher tints it.
+         Strokes are heavier than the colour foreground so the tinted outline
+         survives small sizes, and the pilot is a knocked-out hole so it stays
+         visible against any tint instead of vanishing into one colour. -->
 
-    <!-- Scout hull — stroked outline, nose pointing up -->
+    <!-- Orbit ring -->
     <path
         android:fillColor="#00000000"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="3"
-        android:pathData="M54,26 L40,73.6 L54,65.2 L68,73.6 Z"/>
+        android:strokeWidth="1.6"
+        android:strokeAlpha="0.45"
+        android:pathData="M54,23 a31,31 0 1,0 0,62 a31,31 0 1,0 0,-62 Z"/>
 
-    <!-- Pilot dot — filled, center(54,45.6) radius 3 -->
+    <!-- Hull -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineJoin="round"
+        android:pathData="M54,21.6 L33.8,84.4 L54,71 L74.2,84.4 Z"/>
+
+    <!-- Canopy with the pilot knocked out (evenOdd hole) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M54,45.6 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0"/>
-
-    <!-- Cockpit outline -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="2.5"
-        android:pathData="M54,40 L50.6,49.8 L57.4,49.8 Z"/>
+        android:fillType="evenOdd"
+        android:pathData="M54,37 L47.6,55 L60.4,55 Z M54,48.4 m-3.2,0 a3.2,3.2 0 1,0 6.4,0 a3.2,3.2 0 1,0 -6.4,0 Z"/>
 
 </vector>
