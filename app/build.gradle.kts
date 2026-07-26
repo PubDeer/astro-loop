@@ -52,6 +52,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Reproducible builds: don't embed git commit metadata
+            // (META-INF/version-control-info.textproto), so F-Droid's from-source
+            // build matches our published, self-signed APK byte-for-byte.
+            vcsInfo {
+                include = false
+            }
         }
         debug {
             isMinifyEnabled = false
