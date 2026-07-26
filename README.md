@@ -35,8 +35,8 @@ Coming soon to **F-Droid**, **Accrescent**, and **itch.io**.
 ## Gameplay
 
 - Fly out and survive endless waves of asteroids and enemies.
-- Recruit a crew of pilots, each with a ship and a playstyle of their own.
-- Pick fresh weapons and upgrades every run; push a weapon to max and it evolves.
+- Recruit a crew of pilots and unlock new ships to fly.
+- Pick fresh weapons and upgrades every run.
 - The difficulty never stops climbing. See how far you get.
 
 ## Building

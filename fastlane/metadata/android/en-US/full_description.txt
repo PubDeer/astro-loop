@@ -2,7 +2,7 @@ A roguelike shooter caught in a loop you were never meant to escape.
 
 Signal acquired. One ship, one pilot, and a crew waiting to be recruited. Fly out into the dark, survive endless waves of asteroids and enemies, and see how far you get before the difficulty catches up with you.
 
-Every run you pick fresh weapons and upgrades. Recruit a crew of pilots, each with their own ship and starting weapon, and spend your salvage in the black market between runs. And somewhere in all of it, a story hides in plain sight.
+Every run you pick fresh weapons and upgrades. Recruit a crew of pilots, unlock a fleet of ships, and spend your salvage in the black market between runs. And somewhere in all of it, a story hides in plain sight.
 
 Simple to play. Steer with a single finger, and your guns fire on their own. Easy to pick up, hard to put down.
 
