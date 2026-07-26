@@ -10,7 +10,7 @@
 
 [**pubdeer.com**](https://pubdeer.com) · [watch the trailer](https://www.youtube.com/shorts/G5ii5txIdFI)
 
-Get it on **[F-Droid](https://f-droid.org/packages/com.astroloop.game/)** and **[Accrescent](https://accrescent.app/app/com.astroloop.game)**, or grab the APK from [Releases](https://github.com/PubDeer/astro-loop/releases).
+Get it on **[F-Droid](https://f-droid.org/packages/com.astroloop.game/)**, or grab the APK from [Releases](https://github.com/PubDeer/astro-loop/releases).
 
 <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="220" alt="Combat">
 <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="220" alt="Choose an upgrade">
