@@ -2,15 +2,15 @@
 
 <img src="fastlane/metadata/android/en-US/images/icon.png" width="120" alt="Astro Loop icon">
 
+*PubDeer presents*
+
 # Astro Loop
 
 **A roguelike shooter caught in a loop you were never meant to escape.**
 
-Signal acquired. One ship, one pilot, a crew waiting to be recruited.
-The rest is out there in the dark.
+[**pubdeer.com**](https://pubdeer.com) · [watch the trailer](https://www.youtube.com/shorts/G5ii5txIdFI)
 
-**[pubdeer.com](https://pubdeer.com)** · see it in action, or [watch the trailer on YouTube](https://www.youtube.com/shorts/G5ii5txIdFI).
-Coming soon to F-Droid and Accrescent.
+Coming soon to **F-Droid**, **Accrescent**, and **itch.io**.
 
 <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="220" alt="Combat">
 <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="220" alt="Choose an upgrade">
@@ -18,14 +18,19 @@ Coming soon to F-Droid and Accrescent.
 
 </div>
 
-## Why Astro Loop
+> `DECRYPTING SIGNAL // ASTRO LOOP`
+>
+> Signal acquired. One ship, one pilot, a crew waiting to be recruited.
+> The rest is out there in the dark.
 
-- **Open source.** No black boxes. The whole game is open here under GPLv3.
-- **Free forever.** No price, no in-app purchases, no pay-to-win.
+## System readout
+
+- **Simple to play.** Steer with a single finger. Your guns fire on their own. Easy to pick up, hard to put down.
+- **Open source.** No black boxes. The whole game is open here on GitHub, GPLv3.
+- **Plays offline.** Works with no signal at all. The whole game lives on your phone.
 - **No ads, no tracking.** Zero internet permission. It collects nothing. Not one byte ever leaves your phone.
 - **No sensitive permissions.** No camera, mic, location, contacts, files or network. It never asks you for a thing.
-- **Plays offline.** Works with no signal at all. The whole game lives on your phone.
-- **No accounts.** No sign-up, no login, no email. Open it and play.
+- **Free forever.** No price, no in-app purchases, no pay-to-win. The whole game, free.
 
 ## Gameplay
 
@@ -59,3 +64,5 @@ Copyright (C) 2026 PubDeer
 
 If you enjoy Astro Loop, you can support development on
 [Ko-fi](https://ko-fi.com/pubdeer).
+
+No cookies. No trackers. No nonsense.
