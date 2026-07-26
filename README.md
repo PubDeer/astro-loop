@@ -10,8 +10,6 @@
 
 [**pubdeer.com**](https://pubdeer.com) · [watch the trailer](https://www.youtube.com/shorts/G5ii5txIdFI)
 
-Coming soon to **F-Droid**, **Accrescent**, and **itch.io**.
-
 <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="220" alt="Combat">
 <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="220" alt="Choose an upgrade">
 <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" width="220" alt="Black market">
