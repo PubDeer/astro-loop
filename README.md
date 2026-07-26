@@ -1,12 +1,22 @@
+<div align="center">
+
+<img src="fastlane/metadata/android/en-US/images/icon.png" width="120" alt="Astro Loop icon">
+
 # Astro Loop
 
 **A roguelike shooter caught in a loop you were never meant to escape.**
 
-Signal acquired. One ship, one pilot, a crew waiting to be recruited. The rest
-is out there in the dark.
+Signal acquired. One ship, one pilot, a crew waiting to be recruited.
+The rest is out there in the dark.
 
 **[pubdeer.com](https://pubdeer.com)** · see it in action, or [watch the trailer on YouTube](https://www.youtube.com/shorts/G5ii5txIdFI).
 Coming soon to F-Droid and Accrescent.
+
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="220" alt="Combat">
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="220" alt="Choose an upgrade">
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" width="220" alt="Black market">
+
+</div>
 
 ## Why Astro Loop
 
