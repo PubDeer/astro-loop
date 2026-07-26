@@ -20,6 +20,14 @@ android {
     namespace = "com.astroloop.game"
     compileSdk = 36
 
+    // F-Droid / reproducible builds: don't embed AGP's "dependency metadata"
+    // block (an opaque Google-signed blob in the APK signing block), which
+    // F-Droid's scanner rejects as a non-transparent extra signing block.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
+
     defaultConfig {
         applicationId = "com.astroloop.game"
         minSdk = 24
