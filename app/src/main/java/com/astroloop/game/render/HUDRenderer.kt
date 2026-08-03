@@ -217,9 +217,39 @@ class HUDRenderer {
     private val WEAPON_SLOTS = 4
     private val PASSIVE_SLOTS = 4
 
-    fun initialize(layout: ScreenLayout) {
+    /** Short-edge width in dp, used to gate the HUD's width. See [hudLeft]. */
+    private var smallestScreenWidthDp: Int = 0
+
+    fun initialize(layout: ScreenLayout, smallestScreenWidthDp: Int) {
         this.layout = layout
+        this.smallestScreenWidthDp = smallestScreenWidthDp
     }
+
+    /**
+     * Horizontal bounds the combat HUD pins to, in design units.
+     *
+     * The HUD used to span [ScreenLayout.safe] — the whole screen minus cutouts. That is right on a
+     * phone, where safe is about 960 wide, but on a landscape tablet it is ~3427, so the bar stretched
+     * to more than three times its intended width and the zones drifted to opposite ends of the screen.
+     *
+     * [ScreenLayout.content] is the design-aspect column centred inside safe, and its width comes out
+     * at DESIGN_WIDTH on every device — 960 on a Pixel 9 Pro and 960 on a 2560x1600 tablet — so
+     * pinning here gives every device the phone's HUD proportions. Cutout safety is unchanged:
+     * content is contained within safe by construction, so it can never reach into an inset.
+     *
+     * Vertical anchoring deliberately stays on `safe.top`; only the width was ever the problem, and
+     * safe.top is what keeps the bar clear of a notch.
+     *
+     * Gated at [ScreenLayout.LARGE_SCREEN_MIN_SW_DP]: below it the HUD keeps spanning safe exactly as
+     * it always has. A 16:9 phone has a safe area wider than the design column (about 1205 against
+     * 960), so narrowing there would have been a visible change on a device class that never had the
+     * stretch problem.
+     */
+    private val isLargeScreen: Boolean
+        get() = smallestScreenWidthDp >= ScreenLayout.LARGE_SCREEN_MIN_SW_DP
+
+    private val hudLeft: Float get() = if (isLargeScreen) layout.content.left else layout.safe.left
+    private val hudRight: Float get() = if (isLargeScreen) layout.content.right else layout.safe.right
 
     // Debug paint for alignment grid
     private val gridPaint = Paint().apply {
@@ -255,10 +285,10 @@ class HUDRenderer {
         canvas.drawLine(layout.width / 3, 0f, layout.width / 3, layout.height, gridPaint)
         canvas.drawLine(layout.width * 2 / 3, 0f, layout.width * 2 / 3, layout.height, gridPaint)
 
-        // HUD alignment guide lines — anchored to the safe area so they track the real
-        // HUD origin on cutout devices (the HUD itself is safe-anchored in renderTopBar).
+        // HUD alignment guide lines — anchored to the same rect the HUD itself pins to, so
+        // they keep tracking the real HUD origin (see hudLeft/hudRight).
         val padding = 20f
-        val guideLeft = layout.safe.left + padding
+        val guideLeft = hudLeft + padding
         val guideTop = layout.safe.top + padding
         gridPaint.color = 0x6600FFFF.toInt()  // Cyan for HUD guides
 
@@ -282,8 +312,8 @@ class HUDRenderer {
     private fun renderTopBar(canvas: Canvas, state: GameState, ship: Ship) {
         val padding = 20f
         val topY = layout.safe.top + padding
-        val leftX = layout.safe.left + padding
-        val rightX = layout.safe.right - padding
+        val leftX = hudLeft + padding
+        val rightX = hudRight - padding
 
         // =====================================================================
         // ZONE 1 — Upgrade Grid (top-left)
@@ -641,8 +671,8 @@ class HUDRenderer {
     fun renderRadioOnly(canvas: Canvas, state: GameState) {
         val padding = 20f
         val topY = layout.safe.top + padding
-        val leftX = layout.safe.left + padding
-        val rightX = layout.safe.right - padding
+        val leftX = hudLeft + padding
+        val rightX = hudRight - padding
 
         // Replicate the bar position calculations from renderTopBar
         val gridEndX = leftX + WEAPON_SLOTS * (ICON_SIZE + ICON_PADDING) + 12f

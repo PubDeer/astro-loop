@@ -340,8 +340,8 @@ class GameState {
     var permanentSpeedLevel: Int = 0       // 0-5, +5% speed per level
     var permanentDamageLevel: Int = 0      // 0-5, +5% damage per level
     var permanentCritLevel: Int = 0        // 0-5, +5% crit chance per level
-    var permanentYenBonusLevel: Int = 0    // 0-5, +10% yen per level (0.5x base)
-    var permanentSalvageLevel: Int = 0    // 0-5, +10% upgrade drops per level
+    var permanentYenBonusLevel: Int = 0    // 0-5, +20% yen per level (GameConfig.YEN_BASE_RATE floor)
+    var permanentSalvageLevel: Int = 0    // 0-5, +20% upgrade drops per level (SALVAGE_BASE_RATE floor)
     var permanentMagnetLevel: Int = 0  // 0-5, +15% pickup range & +20% pull speed per level
 
     fun getPermanentHealthBonus(): Float = permanentHealthLevel * 10f
@@ -353,10 +353,16 @@ class GameState {
         val chance = getCritChance()
         return chance > 0f && kotlin.random.Random.nextFloat() < chance
     }
-    fun getYenMultiplier(): Float = 0.5f + permanentYenBonusLevel * 0.10f
+    /**
+     * Finder's Fee multiplier, starting at 1.0 so "+20% yen" on the shop tile is literally what
+     * the first purchase delivers. The 0.5 floor it used to carry now lives at the payout site as
+     * [GameConfig.YEN_BASE_RATE]; base * multiplier is unchanged at every level.
+     */
+    fun getYenMultiplier(): Float = 1f + permanentYenBonusLevel * 0.20f
     fun getAsteroidYenScale(): Float =
         (0.75f + (survivalTime / 300f) * 0.25f).coerceAtMost(1f)
-    fun getSalvageMultiplier(): Float = 0.5f + permanentSalvageLevel * 0.10f
+    /** Scavenger Rig multiplier. Same rebase as [getYenMultiplier]; floor is SALVAGE_BASE_RATE. */
+    fun getSalvageMultiplier(): Float = 1f + permanentSalvageLevel * 0.20f
     fun getMagnetRangeMultiplier(): Float = 1f + permanentMagnetLevel * 0.15f
     fun getMagnetSpeedMultiplier(): Float = 1f + permanentMagnetLevel * 0.2f
 
@@ -733,7 +739,7 @@ class GameState {
         val baseline = if (astroLoopMode) GameConfig.ASTRO_LOOP_UPGRADE_DROP_BASELINE else GameConfig.ASTEROID_UPGRADE_DROP_BASELINE
         val reduction = asteroidUpgradesCollected * GameConfig.ASTEROID_UPGRADE_DROP_DECREASE
         val baseChance = (initial - reduction).coerceAtLeast(baseline)
-        return baseChance * getSalvageMultiplier()
+        return baseChance * GameConfig.SALVAGE_BASE_RATE * getSalvageMultiplier()
     }
 
     fun isEarlyGameDropRate(): Boolean {

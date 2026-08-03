@@ -140,7 +140,7 @@ class GameSurfaceView(
         onAsteroidDestroyed = ::handleAsteroidDestroyedWithTrail
     )
     private val combatDroneSystem = CombatDroneSystem(state, ship)
-    private val projectileEffectsSystem = ProjectileEffectsSystem(ship, state, collisionSystem, visualEffects, ::handleAsteroidDestroyedWithTrail, ::onEnemyDestroyed, ::handlePlayerDeath)
+    private val projectileEffectsSystem = ProjectileEffectsSystem(ship, state, collisionSystem, visualEffects, ::applyDamageModifiers, ::handleAsteroidDestroyedWithTrail, ::onEnemyDestroyed, ::handlePlayerDeath)
     private val radioSystem = RadioSystem()
     private val crewmateEncounter = CrewmateEncounter(ship, EntityPools.projectiles)
 
@@ -347,7 +347,7 @@ class GameSurfaceView(
                 // so push the freshly-inset layout into them or the combat HUD would stay anchored
                 // to safe==full and could sit under the cutout. (screenWidth/height are unchanged
                 // on an inset-only delivery, so camera/spawn/movement need no re-init.)
-                hudRenderer.initialize(layout)
+                hudRenderer.initialize(layout, context.resources.configuration.smallestScreenWidthDp)
                 upgradeSelectionRenderer.initialize(layout)
             }
         }
@@ -519,7 +519,7 @@ class GameSurfaceView(
             // Reinitialize with new dimensions
             camera.initialize(screenWidth, screenHeight)
             starfieldRenderer.initialize(screenWidth, screenHeight)
-            hudRenderer.initialize(layout)
+            hudRenderer.initialize(layout, context.resources.configuration.smallestScreenWidthDp)
             upgradeSelectionRenderer.initialize(layout)
             debugMenuRenderer.initialize(screenWidth, screenHeight)
             spawnSystem.initialize(screenWidth, screenHeight)
@@ -598,7 +598,7 @@ class GameSurfaceView(
 
         // Initialize renderers
         starfieldRenderer.initialize(screenWidth, screenHeight)
-        hudRenderer.initialize(layout)
+        hudRenderer.initialize(layout, context.resources.configuration.smallestScreenWidthDp)
         upgradeSelectionRenderer.initialize(layout)
         spawnSystem.initialize(screenWidth, screenHeight)
         movementSystem.initialize(screenWidth, screenHeight)
@@ -2432,8 +2432,7 @@ class GameSurfaceView(
             collisionResult.explosions, asteroids
         )
         for ((explosion, asteroid) in explosionHits) {
-            val isCrit = state.rollCrit()
-            val finalDamage = if (isCrit) explosion.damage * GameConfig.CRIT_DAMAGE_MULTIPLIER else explosion.damage
+            val (finalDamage, isCrit) = applyDamageModifiers(explosion.damage)
             val destroyed = asteroid.takeDamage(finalDamage)
 
             // Add damage number for explosion hit — colored by the source weapon
@@ -2588,7 +2587,8 @@ class GameSurfaceView(
         for (scorePickup in collisionResult.scorePickupsCollected) {
             state.score += scorePickup.scoreValue
             val yenScale = if (scorePickup.isFromEnemy) 1f else state.getAsteroidYenScale()
-            val yenAmount = (scorePickup.scoreValue * state.getYenMultiplier() * state.dropRateMultiplier * yenScale).toInt()
+            val yenAmount = (scorePickup.scoreValue * GameConfig.YEN_BASE_RATE *
+                state.getYenMultiplier() * state.dropRateMultiplier * yenScale).toInt()
             state.goldCollected += yenAmount
             if (scorePickup.isFromEnemy) state.telemetryYenFromEnemies += yenAmount
             else state.telemetryYenFromAsteroids += yenAmount
@@ -2675,8 +2675,7 @@ class GameSurfaceView(
                     val dy = ship.position.y - enemy.position.y
                     val dist = sqrt(dx * dx + dy * dy)
                     if (dist < shieldRadius + enemy.radius) {
-                        val isCrit = state.rollCrit()
-                        val finalDamage = if (isCrit) shieldDamage * GameConfig.CRIT_DAMAGE_MULTIPLIER else shieldDamage
+                        val (finalDamage, isCrit) = applyDamageModifiers(shieldDamage)
                         state.telemetryDamageByWeapon["crystal_aura"] = (state.telemetryDamageByWeapon["crystal_aura"] ?: 0f) + finalDamage
                         state.telemetryTotalDamageDealt += finalDamage
                         if (isCrit) { state.telemetryCritsThisMinute++; state.telemetryCritsTotal++ }
@@ -2695,8 +2694,7 @@ class GameSurfaceView(
                     val dy = ship.position.y - asteroid.position.y
                     val dist = sqrt(dx * dx + dy * dy)
                     if (dist < shieldRadius + asteroid.radius) {
-                        val isCrit = state.rollCrit()
-                        val finalDamage = if (isCrit) shieldDamage * GameConfig.CRIT_DAMAGE_MULTIPLIER else shieldDamage
+                        val (finalDamage, isCrit) = applyDamageModifiers(shieldDamage)
                         state.telemetryDamageByWeapon["crystal_aura"] = (state.telemetryDamageByWeapon["crystal_aura"] ?: 0f) + finalDamage
                         state.telemetryTotalDamageDealt += finalDamage
                         if (isCrit) { state.telemetryCritsThisMinute++; state.telemetryCritsTotal++ }

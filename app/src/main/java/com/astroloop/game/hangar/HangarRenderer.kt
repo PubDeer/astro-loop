@@ -29,6 +29,7 @@ class HangarRenderer(private val persistence: PersistenceManager) {
     private val shapeRenderer = ShapeRenderer()
     private var screenWidth = 0f
     private var screenHeight = 0f
+    private var roomWidth = 0f
 
     // --- Paints ---
     private val textPaint = Paint().apply {
@@ -89,7 +90,8 @@ class HangarRenderer(private val persistence: PersistenceManager) {
         letterSpacing = 0.15f
     }
 
-    fun initialize(layout: ScreenLayout) {
+    fun initialize(layout: ScreenLayout, roomWidth: Float) {
+        this.roomWidth = roomWidth
         this.layout = layout
         val width = layout.width
         val height = layout.height
@@ -111,6 +113,7 @@ class HangarRenderer(private val persistence: PersistenceManager) {
                 if (rightSolid) RoomEdge.SOLID else RoomEdge.ARCHWAY)
         }
         barPageRenderer.screenWidth = width
+        barPageRenderer.roomWidth = roomWidth
         barPageRenderer.screenHeight = height
         barPageRenderer.walkwayY = walkwayY
         barPageRenderer.ceilingY = ceilingY
@@ -124,6 +127,7 @@ class HangarRenderer(private val persistence: PersistenceManager) {
             StoryStateManager.stage(persistence)
         )
         storePageRenderer.screenWidth = width
+        storePageRenderer.roomWidth = roomWidth
         storePageRenderer.screenHeight = height
         storePageRenderer.walkwayY = walkwayY
         storePageRenderer.ceilingY = ceilingY
@@ -302,25 +306,54 @@ class HangarRenderer(private val persistence: PersistenceManager) {
     // =======================================================================
 
     private fun drawPageContent(canvas: Canvas, state: HangarState) {
-        val viewportX = state.currentPage * screenWidth + state.pageScrollOffset
+        // Rooms tile edge to edge one roomWidth apart. Below sw600dp roomWidth == screenWidth,
+        // so this is arithmetically identical to the single-page-per-screen layout.
+        val stride = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth)
+        val viewportX = viewportX(state)
 
-        // Page 0 (Bar) at position 0
+        // A room is visible if any part of it falls inside the screen. The test is against
+        // screenWidth, not stride: on wide screens several rooms are on screen at once.
         val barX = 0f - viewportX
-        if (barX > -screenWidth && barX < screenWidth) {
+        if (barX > -stride && barX < screenWidth) {
             barPageRenderer.draw(canvas, state, -barX)
         }
 
-        // Page 1 (Shipyard) at position screenWidth
-        val shipyardX = screenWidth - viewportX
-        if (shipyardX > -screenWidth && shipyardX < screenWidth) {
+        val shipyardX = stride - viewportX
+        if (shipyardX > -stride && shipyardX < screenWidth) {
             drawShipyardPage(canvas, state, -shipyardX)
         }
 
-        // Page 2 (Store) at position 2*screenWidth
-        val storeX = 2f * screenWidth - viewportX
-        if (storeX > -screenWidth && storeX < screenWidth) {
+        val storeX = 2f * stride - viewportX
+        if (storeX > -stride && storeX < screenWidth) {
             storePageRenderer.draw(canvas, state, -storeX)
         }
+    }
+
+    /**
+     * World X of the left screen edge, for this frame's page and scroll offset. One definition
+     * shared by the page pass, the walkway and the pilot walker — three hand-written copies of
+     * it drifting apart is what put content in the wrong room in the first place.
+     */
+    private fun viewportX(state: HangarState): Float =
+        HangarMetrics.viewportX(state.currentPage, state.pageScrollOffset, roomWidth, screenWidth)
+
+    /**
+     * Screen-space horizontal extent of the hangar building (its three rooms), for the walkway
+     * and anything that must sit flush with it.
+     *
+     * Below the gate the building is exactly as wide as the screen (effectiveRoomWidth returns
+     * screenWidth there), so it can never be narrower than the screen and the clip below must
+     * never engage. HangarSurfaceView's rubber-band resistance damps pageScrollOffset toward zero
+     * during edge overscroll but never clamps it to exactly zero, so feeding viewportX into the
+     * clip in that branch would shave a sliver off the flush edge for the whole duration of the
+     * drag. Bypass it entirely: the walkway always spans the full screen here, independent of
+     * currentPage/pageScrollOffset.
+     */
+    private fun buildingExtent(state: HangarState): Pair<Float, Float> {
+        val stride = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth)
+        if (stride >= screenWidth) return 0f to screenWidth
+        val viewportX = viewportX(state)
+        return (0f - viewportX).coerceAtLeast(0f) to (3f * stride - viewportX).coerceAtMost(screenWidth)
     }
 
     // =======================================================================
@@ -331,7 +364,8 @@ class HangarRenderer(private val persistence: PersistenceManager) {
         canvas.save()
         canvas.translate(-xOffset, 0f)
         // Clip to page bounds so ships don't bleed into adjacent pages
-        canvas.clipRect(0f, 0f, screenWidth, screenHeight)
+        val rw = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth)
+        canvas.clipRect(0f, 0f, rw, screenHeight)
 
         // Room frame: no ceiling (open to space), archways on both sides
         drawRoomFrame(canvas, false, RoomEdge.ARCHWAY, RoomEdge.ARCHWAY)
@@ -344,7 +378,9 @@ class HangarRenderer(private val persistence: PersistenceManager) {
             else -> ship?.color ?: 0xFF00AAFF.toInt()
         }
 
-        // Target zone indicator (energy field at center of screen)
+        // Target zone indicator (energy field at center of the room — we're drawing in this
+        // page's room-local space per the translate above, so it must centre on the room, not
+        // the screen)
         // Brightness follows chevron logic: brightens on approach, pulses when in halo zone
         val dragProximity = if (state.isDraggingShip) {
             val dist = kotlin.math.abs(state.shipDragY - shipCenterY)
@@ -353,7 +389,7 @@ class HangarRenderer(private val persistence: PersistenceManager) {
         } else 0.2f
         val inHaloZone = state.isDraggingShip &&
             kotlin.math.abs(state.shipDragY - shipCenterY) < 60f
-        drawEnergyField(canvas, shipColor, dragProximity, inHaloZone)
+        drawEnergyField(canvas, shipColor, rw / 2f, dragProximity, inHaloZone)
 
         // Launch rail chevrons between resting position and target zone
         drawLaunchRail(canvas, state, shipColor)
@@ -364,8 +400,11 @@ class HangarRenderer(private val persistence: PersistenceManager) {
         canvas.restore()
     }
 
-    private fun drawEnergyField(canvas: Canvas, shipColor: Int, intensity: Float = 1f, inHaloZone: Boolean = false) {
-        val centerX = screenWidth / 2
+    // centerX is supplied by the caller rather than derived here: this is drawn both inside
+    // drawShipyardPage's room-local translate (needs the room centre) and directly from
+    // drawLaunchSequence in plain screen space (needs the screen centre), and the function has
+    // no way to tell those two contexts apart on its own.
+    private fun drawEnergyField(canvas: Canvas, shipColor: Int, centerX: Float, intensity: Float = 1f, inHaloZone: Boolean = false) {
         val shipY = shipCenterY
         val time = System.currentTimeMillis()
 
@@ -404,7 +443,8 @@ class HangarRenderer(private val persistence: PersistenceManager) {
     }
 
     private fun drawLaunchRail(canvas: Canvas, state: HangarState, shipColor: Int) {
-        val centerX = screenWidth / 2
+        // Called only from drawShipyardPage's room-local translate, so centre on the room.
+        val centerX = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth) / 2
         val targetZoneY = shipCenterY
         val restingY = state.shipRestingY
 
@@ -440,7 +480,10 @@ class HangarRenderer(private val persistence: PersistenceManager) {
     }
 
     private fun drawShips(canvas: Canvas, state: HangarState) {
-        val centerX = screenWidth / 2
+        // Called only from drawShipyardPage's room-local translate, so centre on the room —
+        // and cull against the room width below, not the screen width.
+        val rw = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth)
+        val centerX = rw / 2
 
         val selectedPilot = PilotDefinitions.getPilotByIndex(state.selectedPilotIndex)
 
@@ -472,8 +515,8 @@ class HangarRenderer(private val persistence: PersistenceManager) {
             val offsetFromSelected = visualIndex - selectedVisualPos
             val shipX = centerX + offsetFromSelected * shipSpacing + state.shipScrollOffset
 
-            // Only draw if on screen
-            if (shipX < -100f || shipX > screenWidth + 100f) continue
+            // Only draw if on screen (room-local space, so cull against the room, not the screen)
+            if (shipX < -100f || shipX > rw + 100f) continue
 
             val isUnlocked = state.isShipUnlocked(i)
             val isSelected = (i == state.selectedShipIndex)
@@ -596,6 +639,10 @@ class HangarRenderer(private val persistence: PersistenceManager) {
     private enum class RoomEdge { SOLID, ARCHWAY }
 
     private fun drawRoomFrame(canvas: Canvas, hasCeiling: Boolean, leftEdge: RoomEdge, rightEdge: RoomEdge) {
+        // Called from inside each page's translated space, so this draws THAT room's ceiling
+        // and walls — it must span the room, not the screen, or neighbouring rooms overlap.
+        val rw = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth)
+
         val wallPaint = Paint().apply {
             color = 0xFF2A2A30.toInt()
             style = Paint.Style.FILL
@@ -607,8 +654,8 @@ class HangarRenderer(private val persistence: PersistenceManager) {
 
         // Ceiling line
         if (hasCeiling) {
-            canvas.drawRect(0f, ceilingY, screenWidth, ceilingY + 3f, wallPaint)
-            canvas.drawRect(0f, ceilingY, screenWidth, ceilingY + 1f, highlightPaint)
+            canvas.drawRect(0f, ceilingY, rw, ceilingY + 3f, wallPaint)
+            canvas.drawRect(0f, ceilingY, rw, ceilingY + 1f, highlightPaint)
         }
 
         val wallWidth = 5f
@@ -631,11 +678,11 @@ class HangarRenderer(private val persistence: PersistenceManager) {
         // Right edge
         when (rightEdge) {
             RoomEdge.SOLID -> {
-                canvas.drawRect(screenWidth - wallWidth, ceilingY, screenWidth, walkwayY, wallPaint)
+                canvas.drawRect(rw - wallWidth, ceilingY, rw, walkwayY, wallPaint)
             }
             RoomEdge.ARCHWAY -> {
                 if (hasCeiling) {
-                    canvas.drawRect(screenWidth - wallWidth, ceilingY, screenWidth, walkwayY - archOpening, wallPaint)
+                    canvas.drawRect(rw - wallWidth, ceilingY, rw, walkwayY - archOpening, wallPaint)
                 }
             }
         }
@@ -646,24 +693,40 @@ class HangarRenderer(private val persistence: PersistenceManager) {
     // =======================================================================
 
     private fun drawWalkway(canvas: Canvas, state: HangarState) {
-        val walkwayPaint = Paint().apply {
-            color = 0xFF2A2A30.toInt()
-            style = Paint.Style.FILL
-        }
-        canvas.drawRect(0f, walkwayY, screenWidth, walkwayY + 4f, walkwayPaint)
+        // Global screen-space layer drawn over the page content. The hangar building is only
+        // three rooms wide, so on a wide screen a full-width walkway would extend past the last
+        // room and hang in open space. Clip the walkway (and its edge highlight, which must
+        // match or it would float past the walkway itself) to the building.
+        val stride = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth)
+        // Same viewport transform drawPageContent uses, so the walkway (and the runway lights
+        // below, which also consume it) lines up with the rooms.
+        val viewportX = viewportX(state)
+        val (buildingLeft, buildingRight) = buildingExtent(state)
 
-        // Subtle edge highlight
-        val highlightPaint = Paint().apply {
-            color = 0xFF3A3A40.toInt()
-            style = Paint.Style.FILL
+        if (buildingRight > buildingLeft) {
+            val walkwayPaint = Paint().apply {
+                color = 0xFF2A2A30.toInt()
+                style = Paint.Style.FILL
+            }
+            canvas.drawRect(buildingLeft, walkwayY, buildingRight, walkwayY + 4f, walkwayPaint)
+
+            // Subtle edge highlight
+            val highlightPaint = Paint().apply {
+                color = 0xFF3A3A40.toInt()
+                style = Paint.Style.FILL
+            }
+            canvas.drawRect(buildingLeft, walkwayY, buildingRight, walkwayY + 1f, highlightPaint)
         }
-        canvas.drawRect(0f, walkwayY, screenWidth, walkwayY + 1f, highlightPaint)
 
         // Runway lights along walkway (shipyard page only)
         if (state.currentPage == 1 || state.phase == HangarPhase.LAUNCHING) {
             val lightPaint = Paint().apply { style = Paint.Style.FILL }
             val lightCount = 10
-            val spacing = screenWidth / (lightCount + 1)
+            // Lights belong to the launchpad room (page index 1), not the full screen — space
+            // and position them across that room using the same stride/viewportX transform
+            // drawPageContent uses to place the shipyard page itself.
+            val launchpadLeft = stride - viewportX
+            val spacing = stride / (lightCount + 1)
             val time = System.currentTimeMillis()
 
             // Check if ship is in the halo zone
@@ -672,7 +735,7 @@ class HangarRenderer(private val persistence: PersistenceManager) {
             val launchActive = state.phase == HangarPhase.LAUNCHING
 
             for (i in 1..lightCount) {
-                val lx = spacing * i - state.pageScrollOffset
+                val lx = launchpadLeft + spacing * i
                 val ly = walkwayY + 2f
 
                 if (shipInHalo || launchActive) {
@@ -777,9 +840,9 @@ class HangarRenderer(private val persistence: PersistenceManager) {
 
     private fun drawPilotWalker(canvas: Canvas, state: HangarState) {
         val pilot = state.getSelectedPilot() ?: return
-        // Pilot has a world-space position; subtract viewport to get screen position
-        val viewportX = state.currentPage * screenWidth + state.pageScrollOffset
-        val walkerX = state.pilotX - viewportX
+        // Pilot has a world-space position; subtract viewport to get screen position.
+        // Same viewport transform drawPageContent uses, so the walker lines up with the room.
+        val walkerX = state.pilotX - viewportX(state)
         val walkerY = walkwayY - 8f
         // Only draw if on screen
         if (walkerX > -20f && walkerX < screenWidth + 20f) {
@@ -790,8 +853,12 @@ class HangarRenderer(private val persistence: PersistenceManager) {
     }
 
     private fun drawNPCWalkers(canvas: Canvas, state: HangarState) {
-        val margin = screenWidth * 0.1f
-        val walkableWidth = screenWidth - 2 * margin
+        // Called inside BarPageRenderer's room-local translated canvas, so this must map the
+        // walker's normalized x into room width, not screen width, or roaming crew stray past
+        // the counter on wide screens (the same 0.1/0.8 band stoolNormalizedX maps into).
+        val rw = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth)
+        val margin = rw * 0.1f
+        val walkableWidth = rw - 2 * margin
         val corrupted = StoryStateManager.isCorrupted(persistence)
 
         for (npc in state.npcWalkers) {
@@ -883,10 +950,18 @@ class HangarRenderer(private val persistence: PersistenceManager) {
     // Pilot grid index
     // =======================================================================
 
-    fun getPilotGridIndex(x: Float, y: Float): Int? {
+    /**
+     * Index of the pilot card under a tap, or null.
+     *
+     * [roomX] is ROOM-local (see HangarMetrics.toRoomX) because the grid is drawn room-local by
+     * BarPageRenderer; [y] is screen space, which room tiling never touches. Below the gate the
+     * two spaces coincide and the caller passes the raw touch X, exactly as before.
+     */
+    fun getPilotGridIndex(roomX: Float, y: Float): Int? {
         val gridPadding = 12f
-        val gridLeft = layout.content.left + gridPadding
-        val gridRight = layout.content.right - gridPadding
+        // Must match BarPageRenderer.drawNormalBar's grid bounds exactly, in the same space.
+        val gridLeft = HangarMetrics.contentXInRoom(layout.content.left, roomWidth, screenWidth) + gridPadding
+        val gridRight = HangarMetrics.contentXInRoom(layout.content.right, roomWidth, screenWidth) - gridPadding
         val gridTop = layout.content.top + 70f
         val gridBottom = layout.content.top + layout.content.height * 0.52f
         val cardGap = 8f
@@ -894,12 +969,12 @@ class HangarRenderer(private val persistence: PersistenceManager) {
         val rows = 3
         val cardWidth = (gridRight - gridLeft - cardGap * (cols - 1)) / cols
         val cardHeight = (gridBottom - gridTop - cardGap * (rows - 1)) / rows
-        if (x < gridLeft || x > gridRight || y < gridTop || y > gridBottom) return null
-        val col = ((x - gridLeft) / (cardWidth + cardGap)).toInt()
+        if (roomX < gridLeft || roomX > gridRight || y < gridTop || y > gridBottom) return null
+        val col = ((roomX - gridLeft) / (cardWidth + cardGap)).toInt()
         val row = ((y - gridTop) / (cardHeight + cardGap)).toInt()
         if (col >= cols || row >= rows) return null
         // Verify tap is in card body, not in gap
-        val withinCardX = (x - gridLeft) - col * (cardWidth + cardGap)
+        val withinCardX = (roomX - gridLeft) - col * (cardWidth + cardGap)
         val withinCardY = (y - gridTop) - row * (cardHeight + cardGap)
         if (withinCardX > cardWidth || withinCardY > cardHeight) return null
         val index = row * cols + col
@@ -928,7 +1003,7 @@ class HangarRenderer(private val persistence: PersistenceManager) {
                 val phase = progress / 0.20f
 
                 // Energy field active
-                drawEnergyField(canvas, launchColor)
+                drawEnergyField(canvas, launchColor, centerX)
 
                 // Ship without pilot color
                 if (selectedShip != null) {
@@ -989,7 +1064,7 @@ class HangarRenderer(private val persistence: PersistenceManager) {
                 // Energy field intensifying then fading
                 val fieldIntensity = 1f + phase * 2f
                 val fieldAlpha = 1f - phase
-                drawEnergyField(canvas, launchColor, fieldIntensity * fieldAlpha)
+                drawEnergyField(canvas, launchColor, centerX, fieldIntensity * fieldAlpha)
 
                 // Ship now has pilot color
                 if (selectedShip != null) {
@@ -1067,12 +1142,15 @@ class HangarRenderer(private val persistence: PersistenceManager) {
                     )
                 }
 
-                // Walkway sliding down with the world
+                // Walkway sliding down with the world — same extent as the static walkway it
+                // takes over from (drawWalkway), or it would pop wider the instant it drops.
+                // Below the gate that extent is 0..screenWidth, exactly as before.
                 val walkwayDropPaint = Paint().apply {
                     color = 0xFF2A2A30.toInt()
                     style = Paint.Style.FILL
                 }
-                canvas.drawRect(0f, walkwayY + worldDropY, screenWidth, walkwayY + worldDropY + 4f, walkwayDropPaint)
+                val (dropLeft, dropRight) = buildingExtent(state)
+                canvas.drawRect(dropLeft, walkwayY + worldDropY, dropRight, walkwayY + worldDropY + 4f, walkwayDropPaint)
 
                 // Particles drop with world
                 val particlePaint = Paint().apply {

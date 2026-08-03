@@ -35,6 +35,21 @@ object GameConfig {
 
     // Power-ups
     const val POWERUP_DROP_CHANCE = 0.3f
+
+    /**
+     * Fraction of the nominal rate a run pays out before any shop upgrades.
+     *
+     * Finder's Fee and Scavenger Rig each climb from this floor to the full nominal rate over
+     * five levels. The floor lives here, applied at the payout site, rather than being folded
+     * into the upgrade multiplier — that way the multiplier can start at 1.0 and the shop's
+     * "+20%" label describes a real 20% increase on the first purchase. Folded in, the multiplier
+     * ran 0.5..1.0 in +0.10 steps, so a "+10%" label was measuring against a 1.0 the player never
+     * sees, while the actual first purchase was +20%.
+     *
+     * Changing these changes the economy. The rebase that introduced them did not.
+     */
+    const val YEN_BASE_RATE = 0.5f
+    const val SALVAGE_BASE_RATE = 0.5f
     const val POWERUP_SIZE = 20f
     const val POWERUP_MAGNET_BASE_RANGE = 80f
     const val POWERUP_COLLECT_RANGE = 30f

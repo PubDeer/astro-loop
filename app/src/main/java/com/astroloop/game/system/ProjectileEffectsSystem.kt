@@ -12,6 +12,10 @@ class ProjectileEffectsSystem(
     private val state: GameState,
     private val collisionSystem: CollisionSystem,
     private val visualEffects: VisualEffectManager,
+    // Shared with the direct-hit, beam and saw paths. Explosion damage used to roll crit
+    // inline here and never touch Momentum Drive, so airburst weapons — flak especially,
+    // whose proximity fuse means it lands NO direct hits — got no momentum bonus at all.
+    private val applyDamageModifiers: (Float) -> Pair<Float, Boolean>,
     private val onAsteroidDestroyed: (Asteroid) -> Unit,
     private val onEnemyDestroyed: (EnemyShip) -> Unit,
     private val onPlayerDeath: () -> Unit,
@@ -183,8 +187,7 @@ class ProjectileEffectsSystem(
             )
             for (asteroid in nearbyAsteroids) {
                 if (!projectile.isEnemyProjectile) {
-                    val isCrit = state.rollCrit()
-                    val dmg = if (isCrit) projectile.explosionDamage * GameConfig.CRIT_DAMAGE_MULTIPLIER else projectile.explosionDamage
+                    val (dmg, isCrit) = applyDamageModifiers(projectile.explosionDamage)
                     state.telemetryDamageByWeapon[projectile.weaponId] = (state.telemetryDamageByWeapon[projectile.weaponId] ?: 0f) + dmg
                     state.telemetryTotalDamageDealt += dmg
                     if (isCrit) { state.telemetryCritsThisMinute++; state.telemetryCritsTotal++ }
@@ -220,8 +223,7 @@ class ProjectileEffectsSystem(
                 )
                 for (enemy in nearbyEnemies) {
                     if (!enemy.isCrewmate && !isOnScreen(enemy)) continue  // Can't damage off-screen enemies
-                    val isCrit = state.rollCrit()
-                    val explosionDmg = if (isCrit) projectile.explosionDamage * GameConfig.CRIT_DAMAGE_MULTIPLIER else projectile.explosionDamage
+                    val (explosionDmg, isCrit) = applyDamageModifiers(projectile.explosionDamage)
                     state.telemetryDamageByWeapon[projectile.weaponId] = (state.telemetryDamageByWeapon[projectile.weaponId] ?: 0f) + explosionDmg
                     state.telemetryTotalDamageDealt += explosionDmg
                     if (isCrit) { state.telemetryCritsThisMinute++; state.telemetryCritsTotal++ }

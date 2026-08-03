@@ -29,6 +29,15 @@ class HangarSurfaceView(
     private val onLaunch: (shipId: String, pilotId: String) -> Unit
 ) : SurfaceView(context), SurfaceHolder.Callback, Runnable {
 
+    companion object {
+        // Pilot card flip (tap the selected portrait to read its passive).
+        // The cycle is: FADE out the portrait, hold the passive face, FADE it back out.
+        // So the passive is on screen for (DURATION - FADE) — keep that at the number
+        // you actually want players to have for reading it.
+        const val PILOT_FLIP_FADE = 0.225f      // one cross-fade leg
+        const val PILOT_FLIP_DURATION = 2.225f  // → passive readable for 2.0s
+    }
+
     private var gameThread: Thread? = null
     @Volatile private var running = false
 
@@ -41,6 +50,7 @@ class HangarSurfaceView(
     private var screenWidth = 0f
     private var screenHeight = 0f
     private var renderScale: Float = 1f
+    private var roomWidth: Float = 0f
     private var crystalGlowSoundPlayed = false
 
     // System-cutout insets in physical px, forwarded by MainActivity. Divided by
@@ -65,8 +75,9 @@ class HangarSurfaceView(
         insetLeftPx = left; insetTopPx = top; insetRightPx = right; insetBottomPx = bottom
         if (width > 0 && height > 0) {
             applyScreenDimensions(width, height)
-            renderer.initialize(layout)
+            renderer.initialize(layout, roomWidth)
             state.pilotScreenWidth = screenWidth
+            state.roomWidth = roomWidth
             initShipPositions()
         }
     }
@@ -120,6 +131,11 @@ class HangarSurfaceView(
             insetRight = insetRightPx / renderScale,
             insetBottom = insetBottomPx / renderScale
         )
+        roomWidth = HangarMetrics.roomWidth(
+            screenWidth = screenWidth,
+            contentWidth = layout.content.width,
+            smallestScreenWidthDp = context.resources.configuration.smallestScreenWidthDp
+        )
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -127,8 +143,9 @@ class HangarSurfaceView(
 
         applyScreenDimensions(width, height)
 
-        renderer.initialize(layout)
+        renderer.initialize(layout, roomWidth)
         state.pilotScreenWidth = screenWidth
+        state.roomWidth = roomWidth
         // Only initialize state on first surface creation — on re-attach after
         // a run, resetForReturn() has already set the correct state (e.g. bar page)
         if (!stateInitialized) {
@@ -177,8 +194,9 @@ class HangarSurfaceView(
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         val prevWidth = screenWidth
         applyScreenDimensions(width, height)
-        renderer.initialize(layout)
+        renderer.initialize(layout, roomWidth)
         state.pilotScreenWidth = screenWidth
+        state.roomWidth = roomWidth
         initShipPositions()
         // Re-anchor pilot / TB-26 to the new layout whenever the surface dimensions change
         // (a live fold/unfold) or on the first valid layout (screenWidth was NaN — 0/0 in IEEE
@@ -190,7 +208,7 @@ class HangarSurfaceView(
             state.pilotX = state.getPilotWorldTarget(state.currentPage)
             state.pilotTargetX = state.pilotX
             state.pilotWalking = false
-            state.tb26BarX = screenWidth / 2f
+            state.tb26BarX = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth) / 2f
             state.tb26BarTargetX = state.tb26BarX
         }
     }
@@ -308,9 +326,10 @@ class HangarSurfaceView(
             if (state.crystalRevealTimer >= CrystalOrbPath.FLASH_DURATION) {
                 // Reveal complete — select Astro
                 // Compute Astro's actual slot machine position (base, without walker offset)
-                val margin = state.pilotScreenWidth * 0.1f
-                val walkable = state.pilotScreenWidth * 0.8f
-                val slotMachinePos = 2f * state.pilotScreenWidth + margin + 0.1f * walkable
+                val stride = HangarMetrics.effectiveRoomWidth(roomWidth, state.pilotScreenWidth)
+                val margin = stride * 0.1f
+                val walkable = stride * 0.8f
+                val slotMachinePos = 2f * stride + margin + 0.1f * walkable
                 state.crystalRevealPhase = HangarState.CrystalRevealPhase.DONE
                 state.awaitingCrystalReveal = false
                 state.astroAtSlotMachine = false
@@ -416,13 +435,13 @@ class HangarSurfaceView(
                 state.pilotFlipProgress = 0f
                 state.pilotFlipShowBack = false
             } else {
-                val elapsed = 1.25f - state.pilotFlipTimer
-                state.pilotFlipShowBack = elapsed >= 0.225f
+                val elapsed = PILOT_FLIP_DURATION - state.pilotFlipTimer
+                state.pilotFlipShowBack = elapsed >= PILOT_FLIP_FADE
                 // pilotFlipProgress = alpha of current visible content (1=fully visible, 0=invisible)
                 state.pilotFlipProgress = when {
-                    elapsed < 0.225f -> 1f - elapsed / 0.225f          // fading out: 1→0
-                    state.pilotFlipTimer < 0.225f -> state.pilotFlipTimer / 0.225f  // fading in: 0→1
-                    else -> 1f                                          // back fully visible
+                    elapsed < PILOT_FLIP_FADE -> 1f - elapsed / PILOT_FLIP_FADE          // fading out: 1→0
+                    state.pilotFlipTimer < PILOT_FLIP_FADE -> state.pilotFlipTimer / PILOT_FLIP_FADE  // fading in: 0→1
+                    else -> 1f                                                            // back fully visible
                 }
             }
         }
@@ -462,8 +481,13 @@ class HangarSurfaceView(
         // TB-26 not present in corruption state — no pacing, no beers
         if (StoryStateManager.isCorrupted(persistence)) return
 
+        // Counter and beer band are room-local (BarPageRenderer's barLeft = 10f,
+        // barRight = roomWidth - 10f), so pacing and beer targets must be too or TB-26 paces
+        // past the counter and beers slide into the neighbouring room on wide screens.
+        val rw = HangarMetrics.effectiveRoomWidth(state.roomWidth, screenWidth)
+
         val counterLeft = 30f
-        val counterRight = screenWidth - 30f
+        val counterRight = rw - 30f
 
         // TB-26 pacing
         if (state.tb26BarMoving) {
@@ -491,8 +515,8 @@ class HangarSurfaceView(
                 val target = walkers[kotlin.random.Random.nextInt(walkers.size)]
                 state.beerTargetPilotIndex = target.pilotIndex
                 state.beerX = state.tb26BarX
-                val margin = screenWidth * 0.1f
-                val walkableWidth = screenWidth - 2 * margin
+                val margin = rw * 0.1f
+                val walkableWidth = rw - 2 * margin
                 state.beerTargetX = margin + target.x * walkableWidth
                 state.beerFading = false
                 state.beerFadeAlpha = 1f
@@ -515,8 +539,8 @@ class HangarSurfaceView(
             } else {
                 val dx = state.beerTargetX - state.beerX
                 if (kotlin.math.abs(dx) < 5f) {
-                    val margin = screenWidth * 0.1f
-                    val walkableWidth = screenWidth - 2 * margin
+                    val margin = rw * 0.1f
+                    val walkableWidth = rw - 2 * margin
                     val targetWalker = state.npcWalkers.find { it.pilotIndex == state.beerTargetPilotIndex }
                     if (targetWalker != null) {
                         val walkerScreenX = margin + targetWalker.x * walkableWidth
@@ -593,12 +617,17 @@ class HangarSurfaceView(
                         state.isShipUnlocked(state.selectedShipIndex)) {
                         shipDragPossible = true
                     }
-                    // Check if spin button is being held
-                    if (state.currentPage == 2 && renderer.spinButtonRect.contains(ex, ey)) {
-                        spinButtonHeld = true
-                    }
                     state.pageVelocity = 0f
                     state.pageScrollOffset = 0f
+                    // Check if spin button is being held. Must resolve against the rest position
+                    // (pageScrollOffset == 0), same as the release path in handleStoreTap: its own
+                    // reset above the switch statement already zeroes pageScrollOffset before it
+                    // calls roomX(), so DOWN and UP have to agree on the same rest-position offset
+                    // or a press during a post-swipe settle can hold against one room-local X and
+                    // release against another.
+                    if (state.currentPage == 2 && renderer.spinButtonRect.contains(roomX(ex), ey)) {
+                        spinButtonHeld = true
+                    }
                 }
                 return true
             }
@@ -671,8 +700,9 @@ class HangarSurfaceView(
                     }
                     handleTap(ex, ey)
                 } else if (activeSwipe == SwipeTarget.PAGE) {
+                    val stride = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth)
                     val shouldSwitch = abs(state.pageVelocity) > pageVelocityThreshold ||
-                            abs(state.pageScrollOffset) > screenWidth * 0.25f
+                            abs(state.pageScrollOffset) > stride * 0.25f
 
                     val oldPage = state.currentPage
                     if (shouldSwitch) {
@@ -681,10 +711,10 @@ class HangarSurfaceView(
                         if (state.pageScrollOffset > 0 && state.currentPage < 2 &&
                             !(cinematicLocked && state.currentPage >= 1)) {
                             state.currentPage++
-                            state.pageScrollOffset -= screenWidth
+                            state.pageScrollOffset -= stride
                         } else if (state.pageScrollOffset < 0 && state.currentPage > 0 && !cinematicLocked) {
                             state.currentPage--
-                            state.pageScrollOffset += screenWidth
+                            state.pageScrollOffset += stride
                         }
                     }
                     // Play swipe sound and crossfade ambient on page change.
@@ -737,6 +767,22 @@ class HangarSurfaceView(
         return super.onTouchEvent(event)
     }
 
+    /**
+     * Touch X → the current room's local X.
+     *
+     * The bar and shop pages draw inside `canvas.translate(-xOffset, 0f)` and publish their tap
+     * rects (codex book, upgrade tiles, spin button, hatch, paper, mute toggles) in that
+     * room-local space, so every hit test against one of them goes through here. Below the gate
+     * the room origin is 0 and the page is at rest whenever a tap is dispatched, so this is the
+     * identity — phone hit testing is bit-for-bit unchanged.
+     *
+     * The shipyard page deliberately does NOT use this: its hit tests are all measured from
+     * screenWidth / 2, and the room block is centred on the screen, so the room's centre and the
+     * screen's centre are the same point. Converting there would be a no-op on both sides.
+     */
+    private fun roomX(screenX: Float): Float =
+        HangarMetrics.toRoomX(screenX, roomWidth, screenWidth, state.pageScrollOffset)
+
     private fun handleTap(x: Float, y: Float) {
         when (state.phase) {
             HangarPhase.BROWSING -> {
@@ -772,7 +818,8 @@ class HangarSurfaceView(
 
     private fun navigateToPage(targetPage: Int) {
         val oldPage = state.currentPage
-        state.pageScrollOffset = (oldPage - targetPage) * screenWidth
+        state.pageScrollOffset = (oldPage - targetPage) *
+            HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth)
         state.currentPage = targetPage
         state.pageVelocity = 0f
         SoundManager.playSFX("sfx_ui_swipe")
@@ -783,22 +830,25 @@ class HangarSurfaceView(
     private fun handleBarTap(x: Float, y: Float) {
         SoundManager.playSFX("sfx_ui_tap")
 
+        // The bar page draws — and publishes its rects — in room-local space.
+        val rx = roomX(x)
+
         // Codex book on bar counter
-        if (renderer.codexBookRect.contains(x, y)) {
+        if (renderer.codexBookRect.contains(rx, y)) {
             if (persistence.getDiscoveredEvolutions().isNotEmpty()) {
                 state.phase = HangarPhase.CODEX
             }
             return
         }
 
-        val pilotIndex = renderer.getPilotGridIndex(x, y)
+        val pilotIndex = renderer.getPilotGridIndex(rx, y)
         if (pilotIndex != null) {
             val pilot = PilotDefinitions.getPilotByIndex(pilotIndex)
             if (pilot != null && state.isPilotUnlocked(pilotIndex)) {
                 if (pilotIndex == state.selectedPilotIndex) {
                     // Already selected — fade card to show passive effect
                     state.pilotFlipIndex = pilotIndex
-                    state.pilotFlipTimer = 1.25f
+                    state.pilotFlipTimer = PILOT_FLIP_DURATION
                     state.pilotFlipProgress = 1f       // start from fully visible; was 0f which caused 1-frame invisible flash
                     state.pilotFlipShowBack = false    // reset if re-tapping while back face is displayed
                 } else {
@@ -810,8 +860,12 @@ class HangarSurfaceView(
 
     private fun selectPilotAndStartWalk(pilotIndex: Int) {
         val oldSelectedIndex = state.selectedPilotIndex
-        val margin = screenWidth * 0.1f
-        val walkable = screenWidth * 0.8f
+        // Must land in the same room-local band as HangarState.getPilotWorldTarget's page-0
+        // target, or the pilot walker jumps to a screen-width position outside the bar's stride
+        // on wide screens.
+        val rw = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth)
+        val margin = rw * 0.1f
+        val walkable = rw * 0.8f
         val npcWalker = state.npcWalkers.find { it.pilotIndex == pilotIndex }
         if (npcWalker != null) {
             state.pilotX = margin + npcWalker.x * walkable
@@ -890,9 +944,12 @@ class HangarSurfaceView(
     }
 
     private fun handleStoreTap(x: Float, y: Float) {
+        // The shop page draws — and publishes its rects — in room-local space.
+        val rx = roomX(x)
+
         // Mute toggle buttons (checked before generic tap sound)
         val audioRect = state.audioMuteButtonRect
-        if (audioRect != null && audioRect.contains(x, y)) {
+        if (audioRect != null && audioRect.contains(rx, y)) {
             state.audioMuted = !state.audioMuted
             persistence.setAudioMuted(state.audioMuted)
             SoundManager.setMuted(state.audioMuted)
@@ -901,7 +958,7 @@ class HangarSurfaceView(
         }
 
         val vibRect = state.vibrationMuteButtonRect
-        if (vibRect != null && vibRect.contains(x, y)) {
+        if (vibRect != null && vibRect.contains(rx, y)) {
             state.vibrationMuted = !state.vibrationMuted
             persistence.setVibrationMuted(state.vibrationMuted)
             isVibrationMuted = state.vibrationMuted
@@ -917,7 +974,7 @@ class HangarSurfaceView(
 
         // Maintenance hatch tap (codex secret)
         val hatchRect = state.hatchRect
-        if (hatchRect != null && hatchRect.contains(x, y) && !state.hatchOpen) {
+        if (hatchRect != null && hatchRect.contains(rx, y) && !state.hatchOpen) {
             state.hatchTapCount++
             if (state.hatchTapCount >= 5) {
                 state.hatchOpen = true
@@ -931,19 +988,19 @@ class HangarSurfaceView(
 
         // Paper tap — open codex
         val paperRect = state.paperRect
-        if (state.hatchOpen && paperRect != null && paperRect.contains(x, y)) {
+        if (state.hatchOpen && paperRect != null && paperRect.contains(rx, y)) {
             state.phase = HangarPhase.CODEX
             return
         }
 
         for ((index, rect) in renderer.upgradeRects.withIndex()) {
-            if (rect.contains(x, y)) {
+            if (rect.contains(rx, y)) {
                 handleUpgradeTap(index)
                 return
             }
         }
         // Slot machine spin button
-        if (renderer.spinButtonRect.contains(x, y)) {
+        if (renderer.spinButtonRect.contains(rx, y)) {
             handleSlotSpin()
             return
         }

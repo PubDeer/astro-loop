@@ -303,7 +303,8 @@ class UpgradeSystem(
 
     fun spawnPowerUp(x: Float, y: Float, state: GameState): PowerUp? {
         // Random drop chance, modified by luck
-        val dropChance = GameConfig.POWERUP_DROP_CHANCE * state.dropRateMultiplier * state.getSalvageMultiplier()
+        val dropChance = GameConfig.POWERUP_DROP_CHANCE * state.dropRateMultiplier *
+            GameConfig.SALVAGE_BASE_RATE * state.getSalvageMultiplier()
         if (Random.nextFloat() > dropChance) return null
 
         val powerUp = powerUpPool.obtain()

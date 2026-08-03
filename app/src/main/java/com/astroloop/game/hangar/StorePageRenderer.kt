@@ -26,6 +26,22 @@ class StorePageRenderer(
     private val costPaint: Paint
 ) {
     var screenWidth = 0f
+
+    /** Width of this room in design units. Equals screenWidth below sw600dp. */
+    var roomWidth = 0f
+
+    /** Room width with a fallback for the frame before dimensions arrive. */
+    private val rw: Float get() = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth)
+
+    /**
+     * The content column's edges in ROOM-local units — this page draws inside its room's
+     * translate, and `content` is a screen-space rect. Above the gate the room is the content
+     * column, so these are 0 and roomWidth; below the gate they are `content.left` / `.right`
+     * unchanged, which is why nothing moves on a phone.
+     */
+    private val contentLeftInRoom: Float get() = HangarMetrics.contentXInRoom(content.left, roomWidth, screenWidth)
+    private val contentRightInRoom: Float get() = HangarMetrics.contentXInRoom(content.right, roomWidth, screenWidth)
+
     var screenHeight = 0f
     var walkwayY = 0f
     var ceilingY = 0f
@@ -51,6 +67,10 @@ class StorePageRenderer(
     fun draw(canvas: Canvas, state: HangarState, xOffset: Float) {
         canvas.save()
         canvas.translate(-xOffset, 0f)
+        // Clip to this room, exactly as the shipyard page does: nothing the shop draws may reach
+        // into a neighbouring room. Below the gate the room is the whole screen, so the clip is
+        // the screen and nothing is cut — defence in depth, not a layout change.
+        canvas.clipRect(0f, 0f, rw, screenHeight)
 
         // Room frame: ceiling + archway on left + solid right wall
         drawRoomFrame(canvas, true, false, true)
@@ -62,8 +82,10 @@ class StorePageRenderer(
         val cols = 3
         val rows = 3
         val gridPadding = 16f
-        val gridLeft = content.left + gridPadding
-        val gridRight = content.right - gridPadding
+        // Room-local (see contentLeftInRoom): this page draws inside its room's translate, so a
+        // screen-space content.left would push the grid a room-offset to the right of its room.
+        val gridLeft = contentLeftInRoom + gridPadding
+        val gridRight = contentRightInRoom - gridPadding
         val gridTop = 70f
         val gridBottom = walkwayY - 20f
         val cardGap = 10f
@@ -74,9 +96,9 @@ class StorePageRenderer(
         val maxTileHeight = (gridBottom - gridTop - totalGapY) / rows
         val tileSize = maxTileWidth.coerceAtMost(maxTileHeight)
 
-        // Center the grid
+        // Center the grid in the content column, room-local
         val gridWidth = cols * tileSize + totalGapX
-        val gridStartX = content.left + (content.width - gridWidth) / 2f
+        val gridStartX = contentLeftInRoom + (content.width - gridWidth) / 2f
         val gridHeight = rows * tileSize + totalGapY
         val gridStartY = gridTop + (gridBottom - gridTop - gridHeight) / 2f
 
@@ -106,8 +128,8 @@ class StorePageRenderer(
             UpgradeTile("Lucky Rounds", "crit", "+5% crit chance"),
             UpgradeTile("Haul Line", "magnet", "+15% pickup range"),
             // Row 3 — Economy + NG+
-            UpgradeTile("Finder's Fee", "yen_bonus", "+10% yen"),
-            UpgradeTile("Scavenger Rig", "salvage", "+10% drop rate"),
+            UpgradeTile("Finder's Fee", "yen_bonus", "+20% yen"),
+            UpgradeTile("Scavenger Rig", "salvage", "+20% drop rate"),
             UpgradeTile("Emergency Shield", "emergency_shield", "Survive a lethal hit", isNgPlus = true)
         )
 
@@ -173,14 +195,22 @@ class StorePageRenderer(
                     tileBorderPaint.color = 0xFF444444.toInt()
                     canvas.drawRoundRect(rect, 6f, 6f, tileBorderPaint)
                     textPaint.textSize = (tileSize * 0.25f).coerceIn(16f, 28f)
-                    textPaint.color = 0xFF555555.toInt()
+                    // The same grey as the tile effect/description row ("+10% yen"). The shipped
+                    // 0xFF555555 measured 2.29:1 on this background, under the 3:1 floor; this is
+                    // 7.06:1. Both mystery branches must stay identical or the tile visibly
+                    // shifts when the story state flips.
+                    textPaint.color = 0xFFAAAAAA.toInt()
                     canvas.drawText("?", rect.centerX(), rect.centerY() + tileSize * 0.05f, textPaint)
                 } else if (!crystalUnlocked || state.awaitingCrystalReveal) {
                     // Corrupted but crystal not unlocked — unknown tile (matches non-corrupted "?" style)
                     tileBorderPaint.color = 0xFF444444.toInt()
                     canvas.drawRoundRect(rect, 6f, 6f, tileBorderPaint)
                     textPaint.textSize = (tileSize * 0.25f).coerceIn(16f, 28f)
-                    textPaint.color = 0xFF555555.toInt()
+                    // The same grey as the tile effect/description row ("+10% yen"). The shipped
+                    // 0xFF555555 measured 2.29:1 on this background, under the 3:1 floor; this is
+                    // 7.06:1. Both mystery branches must stay identical or the tile visibly
+                    // shifts when the story state flips.
+                    textPaint.color = 0xFFAAAAAA.toInt()
                     canvas.drawText("?", rect.centerX(), rect.centerY() + tileSize * 0.05f, textPaint)
                 } else {
                     // Corrupted + crystal unlocked — show Time Crystal tile (auto-equipped)
@@ -284,9 +314,13 @@ class StorePageRenderer(
             }
         }
 
-        // Miniature slot machine position on store walkway (always at base position)
-        val margin = state.pilotScreenWidth * 0.1f
-        val walkable = state.pilotScreenWidth * 0.8f
+        // Miniature slot machine position on store walkway (always at base position).
+        // Read side of the walker band: HangarState.getPilotWorldTarget(2) puts the pilot at
+        // `2 * roomWidth + margin + 0.1f * walkable`, i.e. exactly here in room-local space.
+        // Measured against the ROOM, like the write side — below the gate roomWidth is the
+        // screen width, so this is the shipped `pilotScreenWidth` formula unchanged.
+        val margin = rw * 0.1f
+        val walkable = rw * 0.8f
         val storeTargetX = margin + 0.1f * walkable
         drawMiniSlotMachine(canvas, storeTargetX, walkwayY)
 
@@ -393,7 +427,7 @@ class StorePageRenderer(
         // LEFT SIDE — Stacked crates (~35% width)
         // =============================================
         val crateLeft = 10f
-        val crateRight = screenWidth * 0.32f
+        val crateRight = rw * 0.32f
 
         // Large crate (bottom)
         fillPaint.color = 0xFF1A1A28.toInt()
@@ -435,7 +469,7 @@ class StorePageRenderer(
         // =============================================
         // CENTER — Bare bulb on wire
         // =============================================
-        val centerX = screenWidth * 0.5f
+        val centerX = rw * 0.5f
 
         // Wire from ceiling
         linePaint.color = 0xFF444444.toInt()
@@ -475,20 +509,20 @@ class StorePageRenderer(
         val sway2 = sin(time / 2500.0 + 1.0).toFloat() * 4f
 
         // Cable 1
-        val cable1X = screenWidth * 0.25f
+        val cable1X = rw * 0.25f
         canvas.drawLine(cable1X, roomTop, cable1X + sway1, roomTop + 25f, linePaint)
         canvas.drawLine(cable1X + sway1, roomTop + 25f, cable1X + sway1 * 1.5f, roomTop + 40f, linePaint)
 
         // Cable 2
-        val cable2X = screenWidth * 0.72f
+        val cable2X = rw * 0.72f
         canvas.drawLine(cable2X, roomTop, cable2X + sway2, roomTop + 30f, linePaint)
         canvas.drawLine(cable2X + sway2, roomTop + 30f, cable2X + sway2 * 1.3f, roomTop + 50f, linePaint)
 
         // =============================================
         // RIGHT SIDE — Tarp over shelves
         // =============================================
-        val tarpLeft = screenWidth * 0.68f
-        val tarpRight = screenWidth - 10f
+        val tarpLeft = rw * 0.68f
+        val tarpRight = rw - 10f
 
         // Shelves behind tarp (partially visible)
         fillPaint.color = 0xFF1A1A28.toInt()
@@ -516,7 +550,7 @@ class StorePageRenderer(
         // =============================================
         // Sign — "BLACK MARKET"
         // =============================================
-        val signX = screenWidth * 0.5f
+        val signX = rw * 0.5f
         val signY = roomTop + 12f
         // BLACK MARKET — crooked, flickering red neon
         canvas.save()
@@ -542,19 +576,19 @@ class StorePageRenderer(
         val floorRandom = Random(42)
         // Scattered bolts
         for (b in 0 until 8) {
-            val bx = 20f + floorRandom.nextFloat() * (screenWidth - 40f)
+            val bx = 20f + floorRandom.nextFloat() * (rw - 40f)
             val by = roomBottom - 4f - floorRandom.nextFloat() * 6f
             canvas.drawCircle(bx, by, 0.8f + floorRandom.nextFloat() * 0.5f, accentPaint)
         }
         // Spilled canister
         fillPaint.color = 0xFF2A2A35.toInt()
-        val canX = screenWidth * 0.42f
+        val canX = rw * 0.42f
         canvas.drawRoundRect(RectF(canX, roomBottom - 6f, canX + 8f, roomBottom - 2f), 1f, 1f, fillPaint)
         // Scuff marks
         linePaint.color = 0xFF252535.toInt()
         linePaint.strokeWidth = 2f
-        canvas.drawLine(screenWidth * 0.55f, roomBottom - 2f, screenWidth * 0.60f, roomBottom - 3f, linePaint)
-        canvas.drawLine(screenWidth * 0.20f, roomBottom - 1f, screenWidth * 0.24f, roomBottom - 3f, linePaint)
+        canvas.drawLine(rw * 0.55f, roomBottom - 2f, rw * 0.60f, roomBottom - 3f, linePaint)
+        canvas.drawLine(rw * 0.20f, roomBottom - 1f, rw * 0.24f, roomBottom - 3f, linePaint)
 
         // Reset paint state
         textPaint.alpha = 255
@@ -639,7 +673,8 @@ class StorePageRenderer(
         val gridMaxTileHeight = ((walkwayY - 20f) - 70f - gridTotalGapY) / gridRows
         val gridTileSize = gridMaxTileWidth.coerceAtMost(gridMaxTileHeight)
         val gridTotalWidth = gridCols * gridTileSize + gridTotalGapX
-        val gridStartX = content.left + (content.width - gridTotalWidth) / 2f
+        // Room-local, matching the grid above — the machine is drawn inside the same translate.
+        val gridStartX = contentLeftInRoom + (content.width - gridTotalWidth) / 2f
 
         val machineLeft = gridStartX
         val machineRight = gridStartX + gridTotalWidth  // machine width == grid width, content-centered

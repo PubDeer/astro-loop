@@ -7,7 +7,9 @@ import org.junit.Test
 /**
  * Tests for asteroid upgrade drop rate scaling.
  * Early game has higher drop rates that decrease with each upgrade collected.
- * Salvage multiplier (0.5x base, +10% per level) applies on top.
+ * Salvage applies on top: a SALVAGE_BASE_RATE floor of 0.5 at the drop site, times a
+ * multiplier that runs 1.0..2.0 in +20% steps. Net effect per level is unchanged by that rebase —
+ * these assertions are what proves it.
  */
 class GameStateDropRateTest {
 
@@ -19,7 +21,7 @@ class GameStateDropRateTest {
         state.reset()
     }
 
-    // ─── Initial Drop Rate (with 0.5x salvage base) ─────────────
+    // ─── Initial Drop Rate (with the 0.5 salvage base rate) ─────────────
 
     @Test
     fun `initial drop chance is 5 percent with no salvage`() {

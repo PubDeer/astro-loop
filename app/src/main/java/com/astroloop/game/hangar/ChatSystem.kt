@@ -15,6 +15,10 @@ class ChatSystem {
         const val CONVERSATION_COOLDOWN = 20f           // normal / Astro Loop
         const val LINE_PAUSE = 4.0f  // Pause between lines within a conversation
         const val DEATH_RETURN_FIRST_LINE_DELAY = 1.0f  // beat before the first return line lands
+        // Tail after a SCRIPTED burst (post-run return, reckoning chatter, recruitment).
+        // The full CONVERSATION_COOLDOWN here left the bar audibly dead right after the
+        // return lines — ambient banter should pick the scene back up almost immediately.
+        const val SCRIPTED_BURST_TAIL_COOLDOWN = 3f
 
         // Weighted category mix for the unified chat picker (1-way through 4-way).
         val CATEGORY_WEIGHTS = mapOf(1 to 25, 2 to 40, 3 to 23, 4 to 12)
@@ -382,9 +386,11 @@ class ChatSystem {
                     state.conversationLineIndex++
                     state.conversationLineTimer = LINE_PAUSE
                 } else {
-                    // Conversation finished — reset chatTimer so idle lines don't fire immediately after
+                    // Conversation finished. Scripted bursts ask for a short tail so banter
+                    // resumes right after them; everything else falls back to the full gap.
                     state.activeConversation = null
-                    state.conversationCooldown = CONVERSATION_COOLDOWN
+                    state.conversationCooldown = state.conversationEndCooldown
+                    state.conversationEndCooldown = CONVERSATION_COOLDOWN
                     state.chatTimer = 0f
                 }
             }
@@ -693,6 +699,92 @@ class ChatSystem {
         state.addChatMessage(tbName, tb26Reactions.random(), 0xFF88AACC.toInt())
     }
 
+    /**
+     * The newly recruited pilot's own first words, spoken straight after TB-26 announces them.
+     * Keyed by callsign, then by story loop — `PersistenceManager.getStoryLoop()` clamps to 1..3,
+     * so those are the only keys that can ever be looked up. A loop with no entry falls back to
+     * loop 1, which keeps partial coverage safe.
+     *
+     * MEDIC is absent by design: she is already speaking in `onFirstLaunch`, over the empty roster.
+     *
+     * Loop register: loop 1 is a clean arrival; loops 2 and 3 carry an *inkling* only — a pilot
+     * notices something off about their own reaction, never concludes anything from it. They do
+     * not know about the loop, and at recruitment time (a fresh NORMAL stage) they could not.
+     * ASTRO is the exception: his memory is allowed to be clearer, because he is the one the
+     * loop is about.
+     *
+     * No display swap runs on this path, and none is needed: Tobar only exists in astro-loop
+     * mode, and by then the whole roster is already recruited, so recruitment never fires there.
+     *
+     * Authoring: keep each line inside its speaker's chat-column budget — roughly 55-59 chars
+     * worst-case, WHISKERS being the tightest at 55. Never put "commander" in a pilot's mouth;
+     * that word is TB-26/Tobar's alone.
+     */
+    private val arrivalResponses: Map<String, Map<Int, String>> = mapOf(
+        "RASCAL" to mapOf(
+            1 to "Rude. Accurate, but rude.",
+            2 to "Rude. And I'm not even offended. Huh.",
+            3 to "Rude. I keep almost laughing early."
+        ),
+        "BRUTUS" to mapOf(
+            1 to "Good.",
+            2 to "Good. ...hm.",
+            3 to "...Good. Feels worn in."
+        ),
+        "FROST" to mapOf(
+            1 to "You'll adjust. Everyone does.",
+            2 to "You'll adjust. I said that too easily.",
+            3 to "You'll adjust. I never had to think about it."
+        ),
+        "DASH" to mapOf(
+            1 to "Three times! You missed one!",
+            2 to "Three! ...huh. That was fast, even for me.",
+            3 to "Three! Why do I know it's three?"
+        ),
+        "EMBER" to mapOf(
+            1 to "That's just me arriving. It fades.",
+            2 to "That's just me arriving. It fades. It always does.",
+            3 to "Ashes remember the shape of the fire."
+        ),
+        "FANG" to mapOf(
+            1 to "You have. I read the logs.",
+            2 to "You have. Though I don't recall reading them.",
+            3 to "I know these rafters. I've never been here."
+        ),
+        "KRAKEN" to mapOf(
+            1 to "The shelf is the problem. Not the arms.",
+            2 to "The shelf is the problem. It has always been.",
+            3 to "These are familiar waters. Somehow."
+        ),
+        "WHISKERS" to mapOf(
+            1 to "Standards improved. Say it properly.",
+            2 to "Improved. You were always going to say that.",
+            3 to "Improved. I knew that before you did."
+        ),
+        "UNIT-7" to mapOf(
+            1 to "It was structurally a liquid. Adequate.",
+            2 to "Adequate. Response time faster than expected.",
+            3 to "Adequate. That assessment predates the sample."
+        ),
+        "HAVOC" to mapOf(
+            1 to "That stool was STRUCTURALLY WEAK!",
+            2 to "WEAK STOOL! ...huh. Felt good to say that.",
+            3 to "WEAK STOOL! ...why am I not surprised?!"
+        ),
+        // Astro remembers more than the crew do — his TB intro is a deliberate "...".
+        "ASTRO" to mapOf(
+            1 to "Been a long way back.",
+            2 to "I've been here before. I know that much.",
+            3 to "I remember this room. Not how. Just this."
+        )
+    )
+
+    /** Arrival response for [callsign] on [loop], falling back to the loop 1 line. */
+    internal fun arrivalResponseFor(callsign: String, loop: Int): String? {
+        val byLoop = arrivalResponses[callsign] ?: return null
+        return byLoop[loop] ?: byLoop[1]
+    }
+
     fun onPilotRecruited(state: HangarState, pilotCallsign: String) {
         // Skip TB-26 intros during corruption (TB-26 is gone)
         if (StoryStateManager.isCorrupted(state.persistence)) return
@@ -711,18 +803,21 @@ class ChatSystem {
             "HAVOC" to "The new pilot broke a stool sitting down. Promising.",
             "ASTRO" to "..."
         )
+        val lines = mutableListOf<ChatMessage>()
         val intro = tb26Intros[pilotCallsign] ?: "New crew member."
-        state.addChatMessage(tbName, intro, 0xFF88AACC.toInt())
+        lines.add(ChatMessage(tbName, intro, 0xFF88AACC.toInt()))
+        // The arrival answers TB — announcement then response, one beat apart.
+        arrivalResponseFor(pilotCallsign, state.persistence.getStoryLoop())?.let { response ->
+            val pilot = PilotDefinitions.pilots.find { it.callsign == pilotCallsign }
+            if (pilot != null) lines.add(ChatMessage(pilot.callsign, response, pilot.color))
+        }
         // Rascal rigs the slot machine in NG+
         if (pilotCallsign == "RASCAL" && StoryStateManager.hasLoopedBefore(state.persistence)) {
             val rascalColor = PilotDefinitions.getPilot("pilot_rascal")?.color
                 ?: 0xFFCCCCCC.toInt()
-            state.addChatMessage(
-                "RASCAL",
-                "Consider the slot machine... looked after.",
-                rascalColor
-            )
+            lines.add(ChatMessage("RASCAL", "Consider the slot machine... looked after.", rascalColor))
         }
+        appendOrQueue(state, lines)
     }
 
     fun onReturnFromRun(state: HangarState, yen: Int) {
@@ -753,6 +848,10 @@ class ChatSystem {
         state.conversationLineIndex = 0
         // Short pause so greeting is visible before conversations resume
         state.conversationCooldown = 3f
+        // Dropping the in-flight burst above also drops its claim on the tail; the branches
+        // below re-set it when they queue. Without this, a return that queues nothing would
+        // hand the short tail to whatever conversation happens to end next.
+        state.conversationEndCooldown = CONVERSATION_COOLDOWN
         state.chatTimer = 0f
 
         // Every branch BUILDS its lines and hands them to the conversation machinery
@@ -880,6 +979,29 @@ class ChatSystem {
         state.activeConversation = lines
         state.conversationLineIndex = 0
         state.conversationLineTimer = DEATH_RETURN_FIRST_LINE_DELAY
+        state.conversationEndCooldown = SCRIPTED_BURST_TAIL_COOLDOWN
+    }
+
+    /**
+     * Append [lines] to the burst already being delivered, or start a new one.
+     *
+     * Recruitment resolves in the SAME frame as the post-run return — addYenFromRun()
+     * calls onDeathReturn() and then checkPilotRecruitment() — so writing an arrival
+     * line straight into the chat jumped the queue and landed it a full
+     * DEATH_RETURN_FIRST_LINE_DELAY ahead of TB's "Welcome back, commander."
+     * Appending keeps the greeting first and the arrival where it belongs.
+     */
+    private fun appendOrQueue(state: HangarState, lines: List<ChatMessage>) {
+        if (lines.isEmpty()) return
+        val active = state.activeConversation
+        if (active == null) {
+            queueDeathReturnLines(state, lines)
+            return
+        }
+        // update() walks the list by index, so appending past the cursor never disturbs
+        // lines already shown or the one currently in flight.
+        state.activeConversation = active + lines
+        state.conversationEndCooldown = SCRIPTED_BURST_TAIL_COOLDOWN
     }
 
     /** Builds the ceremony lines into [into] (delivered line-by-line by the caller's queue). */

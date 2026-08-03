@@ -20,6 +20,7 @@ class BarPageRenderer(
     private val persistence: PersistenceManager
 ) {
     var screenWidth = 0f
+    var roomWidth = 0f
     var screenHeight = 0f
     var walkwayY = 0f
     var ceilingY = 0f
@@ -90,6 +91,10 @@ class BarPageRenderer(
     fun draw(canvas: Canvas, state: HangarState, xOffset: Float) {
         canvas.save()
         canvas.translate(-xOffset, 0f)
+        // Clip to this room, exactly as the shipyard page does: nothing the bar draws may reach
+        // into a neighbouring room. Below the gate the room is the whole screen, so the clip is
+        // the screen and nothing is cut — defence in depth, not a layout change.
+        canvas.clipRect(0f, 0f, HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth), screenHeight)
 
         drawNormalBar(canvas, state)
 
@@ -106,8 +111,15 @@ class BarPageRenderer(
         val cols = 4
         val rows = 3
         val gridPadding = 12f
-        val gridLeft = content.left + gridPadding
-        val gridRight = content.right - gridPadding
+        // Room-local: everything below is drawn inside this page's translate, where the room
+        // spans 0..roomWidth. `content` is a SCREEN-space rect, so its X coordinates have to
+        // cross into room space first or the grid lands a room-offset to the right of its own
+        // room. Above the gate the room is the content column, so this is 12..roomWidth-12 —
+        // 2px inside the counter's barLeft/barRight, which is the point of the feature. Below
+        // the gate contentXInRoom is the identity and the grid stays exactly where it ships.
+        // Vertical stays screen-space: rooms tile horizontally only.
+        val gridLeft = HangarMetrics.contentXInRoom(content.left, roomWidth, screenWidth) + gridPadding
+        val gridRight = HangarMetrics.contentXInRoom(content.right, roomWidth, screenWidth) - gridPadding
         val gridTop = content.top + 70f
         val gridBottom = content.top + content.height * 0.52f
         val cardGap = 8f
@@ -315,10 +327,13 @@ class BarPageRenderer(
                         textPaint.alpha = 255
                     }
                 } else if (isNextToRecruit) {
-                    textPaint.textSize = (cardHeight * 0.18f).coerceIn(12f, 16f)
+                    // Same sizing rule as the store's mystery "?" — 0.25 of the cell, clamped to
+                    // 16..28 — so the two mystery glyphs read as the same element. Both land on
+                    // the 28 cap at normal card/tile sizes.
+                    textPaint.textSize = (cardHeight * 0.25f).coerceIn(16f, 28f)
                     textPaint.color = 0xFF888888.toInt()
                     textPaint.alpha = cardAlpha
-                    canvas.drawText("???", rect.centerX(), stripTop + stripH * 0.55f, textPaint)
+                    canvas.drawText("?", rect.centerX(), stripTop + stripH * 0.55f, textPaint)
                     textPaint.alpha = 255
                 }
                 // Unknown: no text
@@ -333,6 +348,15 @@ class BarPageRenderer(
         drawChatMessages(canvas, state)
     }
 
+    /**
+     * Horizontal extent of the bar counter, and of everything hung off it — the chat column
+     * included. Measured against the ROOM, not the screen: on large screens the room is the
+     * content column and the pages tile at that width, so a room-relative counter lands 2px
+     * outside the pilot grid on every device instead of only on phones.
+     */
+    private val barLeft: Float get() = 10f
+    private val barRight: Float get() = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth) - 10f
+
     private fun drawChatMessages(canvas: Canvas, state: HangarState) {
         val lineHeight = 32f
         val chatFontSize = 24f
@@ -340,7 +364,15 @@ class BarPageRenderer(
         val chatBottom = indicatorY - 30f
         val chatTop = walkwayY + 10f
         val maxVisible = ((chatBottom - chatTop) / lineHeight).toInt().coerceAtLeast(1)
-        val chatLeft = 12f  // gridPadding
+        // The chat column hangs off the counter, anchoring to its edges rather than the pilot
+        // grid. The counter's left and right bounds are measured against the room width, not
+        // the screen; on large screens, each room is a narrow content column and the three rooms
+        // tile edge to edge, so room-relative edges ensure consistent chat anchoring across all
+        // devices. Both edges must come from the same rect—mixing a screen-relative coordinate
+        // with a room-relative coordinate was the original bug that made lines simultaneously
+        // too wide on the left and truncated early on the right.
+        val chatLeft = barLeft
+        val chatRight = barRight
         val messages = state.chatMessages.toList()
         val startIndex = (messages.size - maxVisible).coerceAtLeast(0)
         val visibleMessages = messages.subList(startIndex, messages.size)
@@ -355,7 +387,7 @@ class BarPageRenderer(
             val callsignWidth = textPaint.measureText(callsignText)
             textPaint.color = 0xFFCCCCCC.toInt()
             val textX = chatLeft + 6f + callsignWidth
-            val fittedText = truncateToFit(msg.text, textPaint, content.right - 12f - textX)
+            val fittedText = truncateToFit(msg.text, textPaint, chatRight - 6f - textX)
             canvas.drawText(fittedText, textX, msgY, textPaint)
         }
         textPaint.textAlign = Paint.Align.CENTER
@@ -377,8 +409,6 @@ class BarPageRenderer(
      * @param hasEvolutions Whether codex book should glow with evolution discovery
      */
     private fun drawBarElements(canvas: Canvas, swayMomentum: Float = 0f, hasEvolutions: Boolean = false) {
-        val barLeft = 10f
-        val barRight = screenWidth - 10f
         val barTop = walkwayY - 25f
         val barBottom = walkwayY + 2f
 
@@ -431,10 +461,9 @@ class BarPageRenderer(
             style = Paint.Style.STROKE
             strokeWidth = 1f
         }
-        val stoolCount = 8
-        val stoolSpacing = (barRight - barLeft) / (stoolCount + 1)
-        for (s in 1..stoolCount) {
-            val sx = barLeft + stoolSpacing * s
+        val stoolRoomWidth = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth)
+        for (s in 1..HangarMetrics.STOOL_COUNT) {
+            val sx = HangarMetrics.stoolCenterX(stoolRoomWidth, s)
             val seatY = barBottom - 6f
             canvas.drawRoundRect(RectF(sx - 5f, seatY, sx + 5f, seatY + 3f), 1f, 1f, stoolPaint)
             canvas.drawLine(sx, seatY + 3f, sx, barBottom, stoolLegPaint)
@@ -547,8 +576,6 @@ class BarPageRenderer(
         val swipeVelocity = state.swayMomentum
         val hasEvolutions = state.hasDiscoveredEvolutions
         val geom = BarGeometry(walkwayY)
-        val barLeft = 10f
-        val barRight = screenWidth - 10f
         val barTop = geom.counterTop      // slim slab (was walkwayY - 25f)
         val barBottom = geom.counterBottom
 
@@ -616,10 +643,9 @@ class BarPageRenderer(
             style = Paint.Style.STROKE
             strokeWidth = 1f
         }
-        val stoolCount = 8
-        val stoolSpacing = (barRight - barLeft) / (stoolCount + 1)
-        for (s in 1..stoolCount) {
-            val sx = barLeft + stoolSpacing * s
+        val stoolRoomWidth = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth)
+        for (s in 1..HangarMetrics.STOOL_COUNT) {
+            val sx = HangarMetrics.stoolCenterX(stoolRoomWidth, s)
             val seatY = geom.stoolSeatY
             val sitter = if (dressing.seatedCrew)
                 state.npcWalkers.firstOrNull { it.seated && it.seatedStool == s } else null
@@ -743,17 +769,18 @@ class BarPageRenderer(
 
     /** Static confetti scattered on the floor band just below the walkway line. */
     private fun drawConfetti(canvas: Canvas) {
+        val w = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth)
         for ((xf, yOff, ci) in confettiSpots) {
             confettiPaint.color = confettiColors[ci]
             confettiPaint.alpha = 170
-            canvas.drawCircle(20f + xf * (screenWidth - 40f), walkwayY + yOff, 1.1f, confettiPaint)
+            canvas.drawCircle(20f + xf * (w - 40f), walkwayY + yOff, 1.1f, confettiPaint)
         }
     }
 
     /** Two swag arcs across the bar back wall with bulbs. Anchored to the wall, stage-independent. */
     private fun drawSwagLights(canvas: Canvas, colors: List<Int>, dipPx: Float) {
         val left = 40f
-        val right = screenWidth - 40f
+        val right = HangarMetrics.effectiveRoomWidth(roomWidth, screenWidth) - 40f
         val mid = (left + right) / 2f
         drawOneSwag(canvas, left, mid, colors, dipPx)
         drawOneSwag(canvas, mid, right, colors, dipPx)

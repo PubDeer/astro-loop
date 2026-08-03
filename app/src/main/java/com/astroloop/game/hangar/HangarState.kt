@@ -69,6 +69,9 @@ class HangarState(internal val persistence: PersistenceManager) {
     @Volatile var pilotTargetX: Float = 0f
     @Volatile var pilotWalking: Boolean = false
     var pilotScreenWidth: Float = 0f              // Set before initialize()
+    // Width of one hangar room in design units — also the page stride. Set alongside
+    // pilotScreenWidth before initialize(). Equals pilotScreenWidth below sw600dp.
+    var roomWidth: Float = 0f
 
     // --- NPC walkers (bar page) ---
     var npcWalkers: CopyOnWriteArrayList<WalkerNPC> = CopyOnWriteArrayList()
@@ -84,8 +87,8 @@ class HangarState(internal val persistence: PersistenceManager) {
 
     /** Screen x of stool [stool] mapped into the walker's normalized 0..1 band. */
     fun stoolNormalizedX(stool: Int): Float {
-        val w = pilotScreenWidth
-        val stoolScreenX = 10f + (w - 20f) / 9f * stool
+        val w = HangarMetrics.effectiveRoomWidth(roomWidth, pilotScreenWidth)
+        val stoolScreenX = HangarMetrics.stoolCenterX(w, stool)
         return (stoolScreenX - w * 0.1f) / (w * 0.8f)
     }
 
@@ -106,6 +109,11 @@ class HangarState(internal val persistence: PersistenceManager) {
     var conversationLineIndex: Int = 0
     var conversationLineTimer: Float = 0f
     var conversationCooldown: Float = 15f  // Start with 15s delay before first conversation
+    // Cooldown applied when the CURRENT conversation finishes. Scripted bursts (the post-run
+    // return, reckoning chatter, a recruitment) drop this to a short tail so the bar doesn't
+    // go silent for a full CONVERSATION_COOLDOWN right after the scripted lines land.
+    // Reset to the default every time a conversation ends.
+    var conversationEndCooldown: Float = ChatSystem.CONVERSATION_COOLDOWN
 
     // --- Discovered evolutions (for codex book in bar) ---
     @Volatile var hasDiscoveredEvolutions: Boolean = false
@@ -192,10 +200,11 @@ class HangarState(internal val persistence: PersistenceManager) {
     private val yenAnimDuration: Float = 3f
 
     fun updatePilotWalker(deltaTime: Float) {
-        val baseSpeed = pilotScreenWidth * 0.70f  // Pixels per second
+        val walkWidth = HangarMetrics.effectiveRoomWidth(roomWidth, pilotScreenWidth)
+        val baseSpeed = walkWidth * 0.70f  // Pixels per second
         val walkSpeed = when {
             // Intro cinematic: deliberately slow so the walk reads as a cinematic beat (~3.4s)
-            introCinematic -> pilotScreenWidth * 0.20f
+            introCinematic -> walkWidth * 0.20f
             StoryStateManager.isCorrupted(persistence) -> baseSpeed * 0.5f
             else -> baseSpeed
         }
@@ -276,17 +285,19 @@ class HangarState(internal val persistence: PersistenceManager) {
 
     /** World X target for each page (pilot stands near the archway connecting to shipyard) */
     fun getPilotWorldTarget(page: Int): Float {
-        val margin = pilotScreenWidth * 0.1f
-        val walkable = pilotScreenWidth * 0.8f
+        // Pages tile at roomWidth, so world positions must step by the same stride.
+        val stride = HangarMetrics.effectiveRoomWidth(roomWidth, pilotScreenWidth)
+        val margin = stride * 0.1f
+        val walkable = stride * 0.8f
         return when (page) {
-            0 -> margin + 0.9f * walkable                              // Right side of bar
-            1 -> pilotScreenWidth + margin + 0.5f * walkable           // Center of shipyard
+            0 -> margin + 0.9f * walkable                       // Right side of bar
+            1 -> stride + margin + 0.5f * walkable              // Center of shipyard
             2 -> {
-                val base = 2f * pilotScreenWidth + margin + 0.1f * walkable  // Left side of store
-                if (astroAtSlotMachine) base - 35f  // Offset left when Astro is at the slot machine
+                val base = 2f * stride + margin + 0.1f * walkable   // Left side of store
+                if (astroAtSlotMachine) base - 35f
                 else base
             }
-            else -> pilotScreenWidth + margin + 0.5f * walkable
+            else -> stride + margin + 0.5f * walkable
         }
     }
 
@@ -381,7 +392,7 @@ class HangarState(internal val persistence: PersistenceManager) {
         hasDiscoveredEvolutions = persistence.getDiscoveredEvolutions().isNotEmpty()
 
         // Initialize TB-26 bartender position at center of counter
-        tb26BarX = pilotScreenWidth / 2f
+        tb26BarX = HangarMetrics.effectiveRoomWidth(roomWidth, pilotScreenWidth) / 2f
         tb26BarTargetX = tb26BarX
         tb26BarMoving = false
         tb26BarPauseTimer = 1f + kotlin.random.Random.nextFloat() * 1.5f

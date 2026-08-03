@@ -9,6 +9,10 @@ import org.junit.Test
  * Validates the mathematical pilot grid hit-detection logic mirrored from HangarRenderer.
  * Uses content-anchored geometry (via ScreenLayout.compute) so drawing and hit-detect
  * share a single source of truth, and fold-wide screens are tested explicitly.
+ *
+ * Below the sw600dp gate — every case here — the room is the whole screen, so
+ * `HangarMetrics.contentXInRoom` is the identity and the real grid is content-anchored
+ * exactly as mirrored. Room-local behaviour above the gate is covered in HangarMetricsTest.
  */
 class PilotGridHitTest {
 

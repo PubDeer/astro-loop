@@ -32,6 +32,18 @@ class ScreenLayout private constructor(
     val height: Float get() = full.height
 
     companion object {
+        /**
+         * Short-edge width, in dp, at or above which a screen counts as large.
+         *
+         * The single home for that threshold. Both features that care — the hangar's adjacent-room
+         * layout and the combat HUD's width — read it from here, because they gate on the same
+         * physical judgement: this screen is wider than the design was drawn for. Two independent
+         * 600s could drift apart and leave a device where the hangar narrows but the HUD does not.
+         *
+         * It is also the breakpoint Android itself uses to decide whether to honour a portrait lock.
+         */
+        const val LARGE_SCREEN_MIN_SW_DP = 600
+
         fun compute(
             width: Float,
             height: Float,

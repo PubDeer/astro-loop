@@ -1,0 +1,9 @@
+Momentum Drive now boosts explosive weapons.
+
+New arrival scene at the bar: TB-26 announces each pilot who joins and they answer back.
+
+Finder's Fee and Scavenger Rig always gave 20% per level. The shop said 10%. Label corrected, effect unchanged.
+
+The bar picks up again quickly after a run.
+
+Tablets and foldables no longer stretch the hangar and HUD.

@@ -2,6 +2,7 @@ package com.astroloop.game.render
 
 import android.content.Context
 import android.graphics.Typeface
+import android.util.Log
 import androidx.core.content.res.ResourcesCompat
 import com.astroloop.game.R
 
@@ -30,7 +31,10 @@ object FontManager {
             displayBold = ResourcesCompat.getFont(context, R.font.orbitron_bold)
             initialized = true
         } catch (e: Exception) {
-            // Fallback to monospace if font loading fails
+            // Fallback to monospace if font loading fails. Substituting all four faces is
+            // visually obvious but otherwise produces no diagnostic at all — log the cause
+            // so a stripped or corrupt font resource is identifiable from a bug report.
+            Log.e("FontManager", "Font load failed; falling back to MONOSPACE for all faces", e)
             bodyRegular = Typeface.MONOSPACE
             bodyBold = Typeface.MONOSPACE
             displayRegular = Typeface.MONOSPACE
